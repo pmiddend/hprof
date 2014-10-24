@@ -31,7 +31,28 @@ data HprofContent =
   HprofUnloadClass Int |
   HprofStackFrame Int Int Int Int Int Int |
   HprofStackTrace Int Int Int [Int] |
+  HprofAllocSites |
+  HprofHeapSummary |
+  HprofStartThread |
+  HprofEndThread |
+  HprofHeapDump [HprofSegmentContent] |
+  HprofHeapDumpEnd |
+  HprofCpuSamples |
+  HprofControlSettings |
   HprofAny
+  deriving Show
+
+data HprofSegmentContent =
+  HprofRootUnknown |
+  HprofRootJniGlobal |
+  HprofRootJniLocal |
+  HprofRootJavaFrame |
+  HprofRootNativeStack |
+  HprofRootStickyClass |
+  HprofRootThreadBlock |
+  HprofRootMonitorUsed |
+  HprofRootThreadObject |
+  HprofRootClassDump |
   deriving Show
 
 parseHeader :: AP.Parser HprofHeader
@@ -56,6 +77,9 @@ idParser = fromIntegral <$> anyWord64be
 word32Parser :: AP.Parser Int
 word32Parser = (fromIntegral <$> anyWord32be)
 
+parseRecordSegment :: Int -> Int -> AP.Parser HprofContent
+parseRecordSegment = undefined
+
 parseRecordContent :: Int -> Int -> AP.Parser HprofContent
 parseRecordContent tag len = case tag of
   0x01 -> HprofString <$> idParser <*> (decodeUtf8With (\_ _ -> Just 'X') <$> AP.take (len - 8))
@@ -63,12 +87,14 @@ parseRecordContent tag len = case tag of
   0x03 -> HprofUnloadClass <$> word32Parser
   0x04 -> HprofStackFrame <$> idParser <*> idParser <*> idParser <*> idParser <*> word32Parser <*> word32Parser
   0x05 -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x06 -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x07 -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x0a -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x0b -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x0c -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
-  0x1c -> HprofStackTrace <$> word32Parser <*> word32Parser <*> word32Parser <*> AP.count ((len-12) `div` 8) idParser
+  0x06 -> AP.take len *> HprofAllocSites
+  0x07 -> AP.take len *> HprofHeapSummary
+  0x0a -> AP.take len *> HprofStartThread
+  0x0b -> AP.take len *> HprofEndThread
+  0x0c -> parseRecordSegment tag len
+  0x2c -> HprofHeapDumpEnd
+  0x0d -> HprofCpuSamples
+  0x0e -> HprofControlSettings
   _ -> AP.take len *> return HprofAny
 
 isHprofString :: HprofContent -> Bool
